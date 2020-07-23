@@ -1,13 +1,15 @@
-import bpy
-import os
+from math import isclose
 import pathlib
-from bpy.props import *
+import datetime
+
+import bpy
+# from bpy.props import *
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 from bpy.types import Operator, AddonPreferences
 from bpy.props import StringProperty, IntProperty, BoolProperty
-from math import isclose
 
-from .gopro_guesser import guess_axis, convert_lat_lon_alt, gen_array_access
+from .mgjson import load_file
+from .gopro_guesser import guess_axis, convert_lat_lon_alt, gen_array_access, gen_axis_convert
 
 # import function
 class ImportMgJson(bpy.types.Operator, ImportHelper):
@@ -166,9 +168,5 @@ def render_single_value_coord(
         frame = micros / framerate / MICROS_PER_SECOND
         kf = fcurve.keyframe_points.insert(frame, value, options={"FAST"})
         kf.interpolation = INTERPOLATION_MAP[interpolation]
-    for fcurve in fcurves:
-        fcurve.update()
-        fcurve.convert_to_samples()
-    byp.ops.object.empty_add(type="SINGLE_ARROW")
-    # Renders as an arrow along the Z axis.
-    context
+    fcurve.update()
+    fcurve.convert_to_samples()

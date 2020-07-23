@@ -28,16 +28,16 @@ def default_data_converter(value):
 
 
 def get_data_converter(dataType):
-    converter = default_data_converter
     if dataType["type"] == "numberString":
-        converter = Decimal
+        return wrap_data_converter(Decimal, dataType=dataType)
     elif dataType["type"] in ["paddedString", "string", "number"]:
-        converter = lambda a: a
+        return wrap_data_converter(lambda a: a, dataType=dataType)
     elif dataType["type"] == "numberStringArray":
-        converter = lambda arr: list(map(Decimal, arr))
+        return wrap_data_converter(
+            lambda arr: list(map(Decimal, arr)), dataType=dataType
+        )
     else:
         raise ValueError(f"Unknown data type: {dataType!r}")
-    return wrap_data_converter(converter, dataType=dataType)
 
 
 def parse_time(time):
@@ -68,69 +68,6 @@ def load_file(path):
 
 ValueInnerType = typ.Union[int, float, Decimal, str]
 ValueType = typ.Union[ValueInnerType, typ.List[ValueInnerType]]
-
-
-@dataclass
-class Outline:
-
-    key: str
-    type: str
-    name: str
-    interpolation: str
-    dataType: typ.Dict
-    value: typ.Union[None, ValueType, typ.List[SamplePoint]] = None
-
-    def is_samples(self):
-        if isinstance(self.value, list):
-            return all(isinstance(v, SamplePoint) for v in self.value)
-        else:
-            return False
-
-    def is_samples_numeric(self):
-        return is_samples() and all(
-            isinstance(v.value, (int, float, Decimal)) for v in self.value
-        )
-
-    def is_samples_list_of_numeric(self):
-        return is_samples() and all(
-            isinstance(v.value, list)
-            and all(isinstance(i, (int, float, Decimal)) for i in v.value)
-            for v in self.value
-        )
-
-
-def load_outline(outline):
-    outline_items = {}
-    for item in outline:
-        key = item.get("sampleSetID") or item.get("matchName")
-        data = Outline(
-            key=key,
-            type=item.get("objectType"),
-            name=item.get("displayName") or key,
-            interpolation=item.get("interpolation"),
-            dataType=item.get("dataType"),
-        )
-        if data.type == "static":
-            data.value = get_data_converter(data["dataType"])(item["value"])
-        outline_items[key] = data
-    return outline_items
-
-
-# def merge_outlines(
-#     outlines: typ.Dict[str, Outline], outlinesToConvert: typ.Dict[str, typ.List[str]]
-# ):
-#     outlines = dict(outlines)
-#     for (outKey, inKeys) in outlinesToConvert.items():
-#         assert outKey not in inKeys
-#         inOutlines = [outlines[key] for key in inKeys]
-#         inValuesToList = [
-#             (lambda v: [v]) if outline.is_samples_numeric() else list
-#             for outline in inOutlines
-#         ]
-#         inValuesIter = zip(outline.value for outline in inOutlines)
-#         for values in inValuesIter:
-#             mapped = itertools.chain.from_
-
 
 
 @dataclass
@@ -168,3 +105,65 @@ def load_samples(
             raise
 
     return (startTime, converted)
+
+
+@dataclass
+class Outline:
+
+    key: str
+    type: str
+    name: str
+    interpolation: str
+    dataType: typ.Dict
+    value: typ.Union[None, ValueType, typ.List[SamplePoint]] = None
+
+    def is_samples(self):
+        if isinstance(self.value, list):
+            return all(isinstance(v, SamplePoint) for v in self.value)
+        else:
+            return False
+
+    def is_samples_numeric(self):
+        return self.is_samples() and all(
+            isinstance(v.value, (int, float, Decimal)) for v in self.value
+        )
+
+    def is_samples_list_of_numeric(self):
+        return self.is_samples() and all(
+            isinstance(v.value, list)
+            and all(isinstance(i, (int, float, Decimal)) for i in v.value)
+            for v in self.value
+        )
+
+
+def load_outline(outline):
+    outline_items = {}
+    for item in outline:
+        key = item.get("sampleSetID") or item.get("matchName")
+        data = Outline(
+            key=key,
+            type=item.get("objectType"),
+            name=item.get("displayName") or key,
+            interpolation=item.get("interpolation"),
+            dataType=item.get("dataType"),
+        )
+        if data.type == "static":
+            data.value = get_data_converter(data["dataType"])(item["value"])
+        outline_items[key] = data
+    return outline_items
+
+
+# def merge_outlines(
+#     outlines: typ.Dict[str, Outline], outlinesToConvert: typ.Dict[str, typ.List[str]]
+# ):
+#     outlines = dict(outlines)
+#     for (outKey, inKeys) in outlinesToConvert.items():
+#         assert outKey not in inKeys
+#         inOutlines = [outlines[key] for key in inKeys]
+#         inValuesToList = [
+#             (lambda v: [v]) if outline.is_samples_numeric() else list
+#             for outline in inOutlines
+#         ]
+#         inValuesIter = zip(outline.value for outline in inOutlines)
+#         for values in inValuesIter:
+#             mapped = itertools.chain.from_

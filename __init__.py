@@ -12,10 +12,10 @@ bl_info = {
 
 import bpy
 
-def menu_func_import_single_mgjson(self, context):
-    self.layout.operator(ImportSingleMgJson.bl_idname, text="Bake MGJSON to F-Curves")
+# def menu_func_import_single_mgjson(self, context):
+#     self.layout.operator(ImportSingleMgJson.bl_idname, text="Bake MGJSON to F-Curves")
 
-def menu_func_import_single_mgjson(self, context):
+def menu_func_import_mgjson(self, context):
     self.layout.operator(ImportMgJson.bl_idname, text="MGJSON (.mgjson)")
 
 
