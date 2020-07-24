@@ -2,15 +2,20 @@
 bl_info = {
     "name": "mgjson-import",
     "author": "Opal Symes",
-    "description": "",
-    "blender": (2, 80, 0),
+    "description": "MGJSON Import",
+    "blender": (2, 83, 0),
     "version": (0, 0, 1),
     "location": "",
     "warning": "",
-    "category": "Generic",
+    "category": "Import-Export",
 }
 
 import bpy
+from .mgimport import ImportMgJson
+
+classes = (
+    ImportMgJson,
+)
 
 # def menu_func_import_single_mgjson(self, context):
 #     self.layout.operator(ImportSingleMgJson.bl_idname, text="Bake MGJSON to F-Curves")
@@ -20,20 +25,12 @@ def menu_func_import_mgjson(self, context):
 
 
 def register():
-    bpy.utils.register_module(__name__)
-    reload_scripts()
-    # bpy.types.GRAPH_MT_key.append(menu_func_import_single_mgjson)
-    bpy.types.INFO_MT_file_import.append(menu_func_import_mgjson)
+    for cls in classes:
+        bpy.utils.register_class(cls)
+    bpy.types.TOPBAR_MT_file_import.append(menu_func_import_mgjson)
 
 
 def unregister():
-    bpy.utils.unregister_module(__name__)
-    # bpy.types.GRAPH_MT_key.remove(menu_func_import_single_mgjson)
-    bpy.types.INFO_MT_file_import.append(menu_func_import_mgjson)
-
-
-def reload_scripts():  # reload all subscripts when reloading main script
-    ...
-    # reload(brg_util)
-    # reload(brg_import)
-    # reload(brg_export)
+    for cls in classes:
+        bpy.utils.unregister_class(cls)
+    bpy.types.TOPBAR_MT_file_import.append(menu_func_import_mgjson)

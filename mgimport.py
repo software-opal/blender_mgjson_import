@@ -1,15 +1,21 @@
-from math import isclose
+from math import isclose, ceil
 import pathlib
 import datetime
 
 import bpy
+
 # from bpy.props import *
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 from bpy.types import Operator, AddonPreferences
 from bpy.props import StringProperty, IntProperty, BoolProperty
 
 from .mgjson import load_file
-from .gopro_guesser import guess_axis, convert_lat_lon_alt, gen_array_access, gen_axis_convert
+from .gopro_guesser import (
+    guess_axis,
+    convert_lat_lon_alt,
+    gen_array_access,
+    gen_axis_convert,
+)
 
 # import function
 class ImportMgJson(bpy.types.Operator, ImportHelper):
@@ -19,7 +25,7 @@ class ImportMgJson(bpy.types.Operator, ImportHelper):
     bl_description = "Import MGJSON file animations to axises"
     bl_label = "Import MGJSON file"
     filename_ext = ".mgjson"
-    filter_glob = StringProperty(default="*.mgjson", options={"HIDDEN"})
+    filter_glob: StringProperty(default="*.mgjson", options={"HIDDEN"})
 
     filepath: StringProperty(
         name="File Path",
@@ -28,7 +34,7 @@ class ImportMgJson(bpy.types.Operator, ImportHelper):
         default="",
     )
     interpret_as_gopro: bpy.props.BoolProperty(
-        name="Interpret file as Extracted GoPro Data"
+        name="Interpret file as Extracted GoPro Data", default=True
     )
 
     def execute(self, context):
@@ -49,16 +55,21 @@ class ImportMgJson(bpy.types.Operator, ImportHelper):
             target_group.objects.unlink(obj)
         target_group.hide_render = True
 
-        outlines = load_file(file)
+        raw_outlines = load_file(file)
         # Remove everything we can't render correctly.
         outlines = dict(
             filter(
-                lambda kv: kv[1].is_value_numeric() or kv[1].is_value_list_of_numeric(),
-                outlines.items(),
+                lambda kv: kv[1].is_samples_numeric_or_list_of_numeric(),
+                raw_outlines.items(),
             )
         )
+        self.report(
+            {"DEBUG"},
+            f"Found the following outlines: {', '.join(raw_outlines)}.\nAccepted: {', '.join(outlines)}",
+        )
         if self.interpret_as_gopro:
-            framerate = outlines["framerate"].value
+            print(list(raw_outlines))
+            framerate = raw_outlines["framerate"].value
             start_frame = context.scene.frame_current
             scene_framerate = context.scene.render.fps / context.scene.render.fps_base
             if not isclose(framerate, scene_framerate):
@@ -116,22 +127,37 @@ class ImportMgJson(bpy.types.Operator, ImportHelper):
                     continue
                 outline = outlines[key]
                 valueRender(
+                    context,
                     target_group,
                     start_frame,
                     scene_framerate,
                     name,
                     outline.interpolation,
-                    [(v.millis, valueConv(v.value)) for v in outline.value],
+                    [(v.micros, valueConv(v.value)) for v in outline.value],
                 )
+        return {"FINISHED"}
 
 
 MICROS_PER_SECOND = datetime.timedelta(seconds=1) / datetime.timedelta(microseconds=1)
 INTERPOLATION_MAP = {"linear": "LINEAR", "hold": "CONSTANT"}
 
 
+def convert_frame(start_frame, framerate, micros):
+    return start_frame + (micros / framerate / MICROS_PER_SECOND)
+
+
+def ensure_enough_frames(context, start_frame, framerate, timeCoords):
+    max_frame = start_frame
+    for (micro, coord) in timeCoords:
+        max_frame = max(convert_frame(start_frame, framerate, micro), max_frame)
+    context.scene.frame_end = max(context.scene.frame_end, max_frame)
+    return max_frame
+
+
 def render_xyz_coord(
-    target_group, start_frame, framerate, name, interpolation, timeCoords
+    context, target_group, start_frame, framerate, name, interpolation, timeCoords
 ):
+    max_frame = ensure_enough_frames(context, start_frame, framerate, timeCoords)
     axis = bpy.data.objects.new("empty", None)
     target_group.objects.link(axis)
     axis.name = name
@@ -141,19 +167,20 @@ def render_xyz_coord(
     axis.rotation_euler = [0, 0, 0]
     fcurves = axis.driver_add("location")
     [xFcurve, yFcurve, zFcurve] = fcurves
-    for (micros, coord) in timeCoords:
-        frame = micros / framerate / MICROS_PER_SECOND
+    for (micro, coord) in timeCoords:
+        frame = convert_frame(start_frame, framerate, micro)
         for value, fcurve in zip(coord, fcurves):
             kf = fcurve.keyframe_points.insert(frame, value, options={"FAST"})
             kf.interpolation = INTERPOLATION_MAP[interpolation]
     for fcurve in fcurves:
         fcurve.update()
-        fcurve.convert_to_samples()
+        fcurve.convert_to_samples(start_frame, ceil(frame))
 
 
 def render_single_value_coord(
-    target_group, start_frame, framerate, name, interpolation, timeCoords
+    context, target_group, start_frame, framerate, name, interpolation, timeCoords
 ):
+    max_frame = ensure_enough_frames(context, start_frame, framerate, timeCoords)
     axis = bpy.data.objects.new("empty", None)
     target_group.objects.link(axis)
     axis.name = name
@@ -164,9 +191,9 @@ def render_single_value_coord(
     axis.rotation_euler = [0, 0, 0]
     # Only animate the z-axis.
     fcurve = axis.driver_add("location", 2)
-    for (micros, value) in timeCoords:
-        frame = micros / framerate / MICROS_PER_SECOND
+    for (micro, value) in timeCoords:
+        frame = convert_frame(start_frame, framerate, micro)
         kf = fcurve.keyframe_points.insert(frame, value, options={"FAST"})
         kf.interpolation = INTERPOLATION_MAP[interpolation]
     fcurve.update()
-    fcurve.convert_to_samples()
+    fcurve.convert_to_samples(start_frame, ceil(frame))

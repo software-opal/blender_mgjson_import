@@ -13,7 +13,7 @@ def wrap_data_converter(fn, *, dataType):
     @functools.wraps(fn)
     def wrapper(value):
         try:
-            fn(value)
+            return fn(value)
         except Exception:
             print(
                 f"Exception raised whilst parsing.\n  value={value!r}\n  dataType={dataType!r}"
@@ -87,6 +87,8 @@ def load_samples(
         key = samples["sampleSetID"]
         try:
             data_converter = get_data_converter(parsed_outline[key].dataType)
+            if data_converter(samples["samples"][0]['value']) is None:
+                raise ValueError(f'Unable to convert {samples["samples"][0]["value"]!r} using {data_converter!r}. Got none')
             convertedSamples = [
                 SamplePoint(
                     time=parse_time(sample["time"]),
@@ -135,6 +137,16 @@ class Outline:
             for v in self.value
         )
 
+    def is_samples_numeric_or_list_of_numeric(self):
+        return self.is_samples() and all(
+            isinstance(v.value, (int, float, Decimal))
+            or (
+                isinstance(v.value, list)
+                and all(isinstance(i, (int, float, Decimal)) for i in v.value)
+            )
+            for v in self.value
+        )
+
 
 def load_outline(outline):
     outline_items = {}
@@ -147,8 +159,8 @@ def load_outline(outline):
             interpolation=item.get("interpolation"),
             dataType=item.get("dataType"),
         )
-        if data.type == "static":
-            data.value = get_data_converter(data["dataType"])(item["value"])
+        if data.type == "dataStatic":
+            data.value = get_data_converter(data.dataType)(item["value"])
         outline_items[key] = data
     return outline_items
 
