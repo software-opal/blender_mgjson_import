@@ -1,6 +1,7 @@
 from math import isclose, ceil
 import pathlib
 import datetime
+import json
 
 import bpy
 
@@ -68,7 +69,6 @@ class ImportMgJson(bpy.types.Operator, ImportHelper):
             f"Found the following outlines: {', '.join(raw_outlines)}.\nAccepted: {', '.join(outlines)}",
         )
         if self.interpret_as_gopro:
-            print(list(raw_outlines))
             framerate = raw_outlines["framerate"].value
             start_frame = context.scene.frame_current
             scene_framerate = context.scene.render.fps / context.scene.render.fps_base
@@ -126,6 +126,14 @@ class ImportMgJson(bpy.types.Operator, ImportHelper):
                 if key not in outlines:
                     continue
                 outline = outlines[key]
+                self.report(
+                    {"INFO"},
+                    f"Importing {name} from {key}. First point: {outline.value[0]}: {valueConv(outline.value[0].value)}",
+                )
+                with (file.with_suffix(f".{key}.json")).open("w") as f:
+                    json.dump(
+                        [(v.micros, valueConv(v.value)) for v in outline.value], f
+                    )
                 valueRender(
                     context,
                     target_group,
@@ -143,7 +151,7 @@ INTERPOLATION_MAP = {"linear": "LINEAR", "hold": "CONSTANT"}
 
 
 def convert_frame(start_frame, framerate, micros):
-    return start_frame + (micros / framerate / MICROS_PER_SECOND)
+    return start_frame + (framerate * micros / MICROS_PER_SECOND)
 
 
 def ensure_enough_frames(context, start_frame, framerate, timeCoords):
@@ -165,7 +173,8 @@ def render_xyz_coord(
     axis.empty_display_type = "ARROWS"
     axis.location.xyz = [0, 0, 0]
     axis.rotation_euler = [0, 0, 0]
-    fcurves = axis.driver_add("location")
+    axis.keyframe_insert("location")
+    fcurves = axis.animation_data.action.fcurves
     [xFcurve, yFcurve, zFcurve] = fcurves
     for (micro, coord) in timeCoords:
         frame = convert_frame(start_frame, framerate, micro)
@@ -174,7 +183,7 @@ def render_xyz_coord(
             kf.interpolation = INTERPOLATION_MAP[interpolation]
     for fcurve in fcurves:
         fcurve.update()
-        fcurve.convert_to_samples(start_frame, ceil(frame))
+        fcurve.convert_to_samples(start_frame, ceil(max_frame))
 
 
 def render_single_value_coord(
@@ -190,10 +199,11 @@ def render_single_value_coord(
     axis.location.xyz = [0, 0, 0]
     axis.rotation_euler = [0, 0, 0]
     # Only animate the z-axis.
-    fcurve = axis.driver_add("location", 2)
+    axis.keyframe_insert("location", 2)
+    fcurve = axis.animation_data.action.fcurves[0]
     for (micro, value) in timeCoords:
         frame = convert_frame(start_frame, framerate, micro)
         kf = fcurve.keyframe_points.insert(frame, value, options={"FAST"})
         kf.interpolation = INTERPOLATION_MAP[interpolation]
     fcurve.update()
-    fcurve.convert_to_samples(start_frame, ceil(frame))
+    fcurve.convert_to_samples(start_frame, ceil(max_frame))
