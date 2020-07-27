@@ -12,7 +12,7 @@ bl_info = {
 
 import bpy
 from .mgimport import ImportMgJson
-
+print("Test")
 classes = (
     ImportMgJson,
 )
